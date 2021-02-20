@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:background_fetch/background_fetch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_geolocation/flutter_background_geolocation.dart' as bg;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -7,11 +8,111 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geofence/util/geospatial.dart';
 import 'package:latlong/latlong.dart';
 import 'package:geofence/util/dialog.dart' as util;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'geofence_view.dart';
 
 void main() {
   runApp(MyApp());
+  /// Register BackgroundGeolocation headless-task.
+  bg.BackgroundGeolocation.registerHeadlessTask(
+      backgroundGeolocationHeadlessTask);
+
+  /// Register BackgroundFetch headless-task.
+  BackgroundFetch.registerHeadlessTask(backgroundFetchHeadlessTask);
+}
+
+void backgroundGeolocationHeadlessTask(bg.HeadlessEvent headlessEvent) async {
+  print('📬 --> $headlessEvent');
+
+  switch (headlessEvent.name) {
+    case bg.Event.TERMINATE:
+      try {
+        bg.Location location =
+        await bg.BackgroundGeolocation.getCurrentPosition(samples: 1);
+        print('[getCurrentPosition] Headless: $location');
+      } catch (error) {
+        print('[getCurrentPosition] Headless ERROR: $error');
+      }
+      break;
+    case bg.Event.HEARTBEAT:
+    /* DISABLED getCurrentPosition on heartbeat
+      try {
+        bg.Location location = await bg.BackgroundGeolocation.getCurrentPosition(samples: 1);
+        print('[getCurrentPosition] Headless: $location');
+      } catch (error) {
+        print('[getCurrentPosition] Headless ERROR: $error');
+      }
+      */
+      break;
+    case bg.Event.LOCATION:
+      bg.Location location = headlessEvent.event;
+      print(location);
+      break;
+    case bg.Event.MOTIONCHANGE:
+      bg.Location location = headlessEvent.event;
+      print(location);
+      break;
+    case bg.Event.GEOFENCE:
+      bg.GeofenceEvent geofenceEvent = headlessEvent.event;
+      print(geofenceEvent);
+      break;
+    case bg.Event.GEOFENCESCHANGE:
+      bg.GeofencesChangeEvent event = headlessEvent.event;
+      print(event);
+      break;
+    case bg.Event.SCHEDULE:
+      bg.State state = headlessEvent.event;
+      print(state);
+      break;
+    case bg.Event.ACTIVITYCHANGE:
+      bg.ActivityChangeEvent event = headlessEvent.event;
+      print(event);
+      break;
+    case bg.Event.HTTP:
+      bg.HttpEvent response = headlessEvent.event;
+      print(response);
+      break;
+    case bg.Event.POWERSAVECHANGE:
+      bool enabled = headlessEvent.event;
+      print(enabled);
+      break;
+    case bg.Event.CONNECTIVITYCHANGE:
+      bg.ConnectivityChangeEvent event = headlessEvent.event;
+      print(event);
+      break;
+    case bg.Event.ENABLEDCHANGE:
+      bool enabled = headlessEvent.event;
+      print(enabled);
+      break;
+  }
+}
+
+void backgroundFetchHeadlessTask(String taskId) async {
+  // Get current-position from BackgroundGeolocation in headless mode.
+  //bg.Location location = await bg.BackgroundGeolocation.getCurrentPosition(samples: 1);
+  /*
+  String taskId = task.taskId;
+  bool timeout = task.timeout;
+  // Is this a background_fetch timeout event?  If so, simply #finish and bail-out.
+  if (timeout) {
+    print("[BackgroundFetch] HeadlessTask TIMEOUT: $taskId");
+    BackgroundFetch.finish(taskId);
+    return;
+  }
+
+   */
+  print("[BackgroundFetch] HeadlessTask: $taskId");
+
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  int count = 0;
+  if (prefs.get("fetch-count") != null) {
+    count = prefs.getInt("fetch-count");
+  }
+  prefs.setInt("fetch-count", ++count);
+  print('[BackgroundFetch] count: $count');
+
+  BackgroundFetch.finish(taskId);
 }
 
 class MyApp extends StatelessWidget {
@@ -66,12 +167,6 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin<M
 
   @override
   void initState() {
-    flutterLocalNotificationsPlugin = new FlutterLocalNotificationsPlugin();
-    var android = new AndroidInitializationSettings('@mipmap/ic_launcher');
-    var iOS = new IOSInitializationSettings();
-    var initSetttings = new InitializationSettings(android:android,iOS: iOS);
-    flutterLocalNotificationsPlugin.initialize(initSetttings,
-        onSelectNotification: onSelectNotification);
     _mapOptions = new MapOptions(
         onPositionChanged: _onPositionChanged,
         center: _center,
@@ -146,11 +241,14 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin<M
   void _onGeofence(bg.GeofenceEvent event) async {
     bg.Logger.info('[onGeofence] Flutter received onGeofence event ${event.action}');
     if(event.action == "ENTER"){
-      showNotification("ENTER");
+      // showNotification("ENTER");
+      callbackDispatcher("ENTER");
     }
 
     else if(event.action == "EXIT"){
-      showNotification("EXIT");
+      // showNotification("EXIT");
+      callbackDispatcher("EXIT");
+
     }
 
     GeofenceMarker marker = _geofences.firstWhere(
@@ -397,34 +495,15 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin<M
         ),
         floatingActionButton: FloatingActionButton(
           child: Icon(Icons.adb_rounded),
-          onPressed: location,
+          onPressed: (){
+            bg.BackgroundGeolocation.stop();
+          },
         ),
       ),
     );
   }
   FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin;
-  showNotification(msg) async {
-    var android = new AndroidNotificationDetails(
-        'channel id', 'channel NAME', 'CHANNEL DESCRIPTION',
-        priority: Priority.high,importance: Importance.max
-    );
-    var iOS = new IOSNotificationDetails();
-    var platform = new NotificationDetails(android:android,iOS: iOS);
-    await flutterLocalNotificationsPlugin.show(
-        0, 'Geofence', msg, platform,
-        payload: 'Flutter Local Notification');
-  }
 
-  Future onSelectNotification(String payload) {
-    debugPrint("payload : $payload");
-    showDialog(
-      context: context,
-      builder: (_) => new AlertDialog(
-        title: new Text('Notification'),
-        content: new Text('$payload'),
-      ),
-    );
-  }
   location() async{
     bg.Location location = await bg.BackgroundGeolocation.getCurrentPosition(
         timeout: 30,          // 30 second timeout to fetch location
@@ -437,6 +516,39 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin<M
     );
     print("Coords ------> ${location.coords}");
   }
+
+
+}
+
+void callbackDispatcher(msg) {
+  FlutterLocalNotificationsPlugin flip = new FlutterLocalNotificationsPlugin();
+  var android = new AndroidInitializationSettings('@mipmap/ic_launcher');
+  var IOS = new IOSInitializationSettings();
+
+  var settings = new InitializationSettings(android:android,iOS: IOS);
+  flip.initialize(settings);
+  _showNotificationWithDefaultSound(flip,msg);
+}
+
+Future _showNotificationWithDefaultSound(flip,msg) async {
+
+  var androidPlatformChannelSpecifics = new AndroidNotificationDetails(
+      'your channel id',
+      'your channel name',
+      'your channel description',
+      importance: Importance.max,
+      priority: Priority.high
+  );
+  var iOSPlatformChannelSpecifics = new IOSNotificationDetails();
+
+  var platformChannelSpecifics = new NotificationDetails(
+      android:androidPlatformChannelSpecifics,
+      iOS:iOSPlatformChannelSpecifics
+  );
+  await flip.show(0, 'geofence',
+      msg,
+      platformChannelSpecifics, payload: 'Default_Sound'
+  );
 }
 
 

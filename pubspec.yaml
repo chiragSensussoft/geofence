@@ -34,9 +34,9 @@ dependencies:
   #  url: https://github.com/domesticmouse/flutter_map.git
   unicorndial: ^1.1.5
 #  background_fetch: ^0.7.1
-#  shared_preferences: ^0.5.10
+  shared_preferences: ^0.5.10
   flutter_background_geolocation: ^1.11.1
-#  background_fetch: ^0.6.0
+  background_fetch: ^0.6.0
   flutter_local_notifications: ^4.0.1
 
 dev_dependencies:
